@@ -25,7 +25,6 @@
 #include "trace.h"
 #include "trace2.h"
 #include "worktree.h"
-#include "exec-cmd.h"
 
 static int inside_git_dir = -1;
 static int inside_work_tree = -1;
@@ -685,6 +684,9 @@ static enum extension_result handle_extension(const char *var,
 		return EXTENSION_OK;
 	} else if (!strcmp(ext, "relativeworktrees")) {
 		data->relative_worktrees = git_config_bool(var, value);
+		return EXTENSION_OK;
+	} else if (!strcmp(ext, "submodulepathconfig")) {
+		data->submodule_path_cfg = git_config_bool(var, value);
 		return EXTENSION_OK;
 	}
 	return EXTENSION_UNKNOWN;
@@ -1956,6 +1958,8 @@ const char *setup_git_directory_gently(int *nongit_ok)
 				repo_fmt.worktree_config;
 			the_repository->repository_format_relative_worktrees =
 				repo_fmt.relative_worktrees;
+			the_repository->repository_format_submodule_path_cfg =
+				repo_fmt.submodule_path_cfg;
 			/* take ownership of repo_fmt.partial_clone */
 			the_repository->repository_format_partial_clone =
 				repo_fmt.partial_clone;
@@ -2054,6 +2058,8 @@ void check_repository_format(struct repository_format *fmt)
 				    fmt->ref_storage_format);
 	the_repository->repository_format_worktree_config =
 		fmt->worktree_config;
+	the_repository->repository_format_submodule_path_cfg =
+		fmt->submodule_path_cfg;
 	the_repository->repository_format_relative_worktrees =
 		fmt->relative_worktrees;
 	the_repository->repository_format_partial_clone =
@@ -2312,6 +2318,7 @@ void initialize_repository_version(int hash_algo,
 {
 	struct strbuf repo_version = STRBUF_INIT;
 	int target_version = GIT_REPO_VERSION;
+	int default_submodule_path_config = 0;
 
 	/*
 	 * Note that we initialize the repository version to 1 when the ref
@@ -2348,6 +2355,15 @@ void initialize_repository_version(int hash_algo,
 
 		strbuf_release(&config);
 		clear_repository_format(&repo_fmt);
+	}
+
+	repo_config_get_bool(the_repository, "init.defaultSubmodulePathConfig",
+			     &default_submodule_path_config);
+	if (default_submodule_path_config) {
+		/* extensions.submodulepathconfig requires at least version 1 */
+		if (target_version == 0)
+			target_version = 1;
+		repo_config_set(the_repository, "extensions.submodulepathconfig", "true");
 	}
 
 	strbuf_addf(&repo_version, "%d", target_version);
